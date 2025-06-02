@@ -1,8 +1,9 @@
-
+# %%
 #Importing read-sm-files.py
 import ReadSMFIles
 from Resource import Resource
 from Task import Task
+from Schedule import Schedule
 import random
 from typing import List, Tuple, Callable, Optional
 import numpy as np
@@ -14,18 +15,97 @@ import networkx as nx
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+# Get the current directory
+# current_dir = os.path.dirname(os.path.abspath(__file__))
+# Construct the full path to the input file
+# input_file = os.path.join(current_dir, "j60.sm", "j601_1.sm")
 
+#reading j30.sm/j301_1.sm file
+#reading j30.sm/j301_1.sm file
+#sm_file = ReadSMFIles.SMFileParser.parse_sm_file("j30.sm/j301_1.sm")
+
+print = lambda *args, **kwargs: None
+sm_file = ReadSMFIles.SMFileParser.parse_sm_file("j60.sm\j6025_1.sm")
+
+print(sm_file)
+
+
+# %%
+#Creating resources
+r1 = int(sm_file[4].R1[0])
+r2 = int(sm_file[4].R2[0])
+r3 = int(sm_file[4].R3[0])
+r4 = int(sm_file[4].R4[0])
+
+R1 = Resource('R1', r1)
+R2 = Resource('R2', r2)
+R3 = Resource('R3', r3)
+R4 = Resource('R4', r4)
+
+resources = [R1, R2, R3, R4]
+
+print([resource.name for resource in resources], [resource.per_period_availability for resource in resources])
+
+
+# %%
+#Creating jobs
+jobs_enumerate = sm_file[3].jobnr
+jobs_duration = sm_file[3].duration
+jobs_resources = sm_file[3].resources
+jobs_successors = sm_file[2].successors
+
+jobs = [None for _ in jobs_enumerate]
+
+for i in jobs_enumerate:
+    jobs[i - 1] = Task(str(i), jobs_duration[i - 1])
+
+for i in range(len(resources)):
+    for j in range(len(jobs)):
+        jobs[j].add_renewable_resource(resources[i], jobs_resources[j][i])
+
+for i in range(len(jobs)):
+    successors = jobs_successors[i]
+    for j in successors:
+        jobs[i].add_sucessor(jobs[j - 1])
+    
+# jobs = jobs[1:-1]
+
+# Ensure all tasks with no predecessors have the dummy start as a predecessor
+# (dummy start is jobs[0])
+dummy_start = jobs[0]
+for job in jobs[1:]:
+    if len(job.predecessors) == 0:
+        job.add_predecessor(dummy_start)
+
+# Print task information
+print("\nTask Information:")
+print("Task ID | Duration | Resource Requirements (R1, R2, R3, R4) | Successors")
+print("-" * 80)
+for job in jobs:
+    resource_reqs = [job.renewable_resources.get(resource, 0) for resource in resources]
+    successors = [s.name for s in job.sucessors]
+    print(f"{job.name:7} | {job.duration:8} | {resource_reqs} | {successors}")
+
+print("\nResource Availabilities:")
+for resource in resources:
+    print(f"{resource.name}: {resource.per_period_availability}")
+
+# %% [markdown]
+# 
+# # ACO for RCPSP
+
+# %%
+# %%
 class AntColonyRCPSP:
-    def __init__(self, tasks: List[Task], resources: List[Resource], n_ants: int = 10, n_iterations: int = 50,
-                 alpha: float = 1.0, beta: float = 3.0, rho: float = 0.1, c: float = 0.5, gamma: float = 1.0, elitist_forget_generations = None):
+    def __init__(self, tasks: List[Task], n_ants: int = 10, n_iterations: int = 50,
+                 alpha: float = 1.0, beta: float = 3.0, rho: float = 0.1, c: float = 0.5, gamma: float = 1.0, elitist_forget_generations = 30):
         self.tasks = tasks
-        self.resources = resources
         self.n_ants = n_ants
         self.n_iterations = n_iterations
         self.alpha = alpha  # pheromone importance
         self.initial_beta = beta  # initial heuristic importance
         self.rho = rho      # evaporation rate
-        self.elitist_forget_generations = elitist_forget_generations
+        self.elitist_forget_generations = 30
 
         self.n_tasks = len(tasks)
         self.pheromone = np.random.uniform(0.1, 1.0, (self.n_tasks, self.n_tasks))
@@ -124,6 +204,7 @@ class AntColonyRCPSP:
         eligible = []
         for i, task in enumerate(unscheduled):
             if all(pred in scheduled for pred in task.predecessors):
+                # print(f"Adding task {i} {task.name} to eligible tasks")
                 eligible.append(task)
         return eligible
 
@@ -131,7 +212,7 @@ class AntColonyRCPSP:
         max_time = 1000
         resource_availability = {
             resource.name: np.ones(max_time) * resource.per_period_availability
-            for resource in self.resources
+            for resource in resources
         }
         task_times = {task.name: {'start': 0, 'end': 0} for task in task_order}
 
@@ -162,6 +243,7 @@ class AntColonyRCPSP:
         makespan = max(task['end'] for task in task_times.values())
         return makespan
 
+    # prob
     def _2opt_swap(self, route: List[Task], i: int, j: int) -> List[Task]:
         new_route = route[:i]
         new_route.extend(reversed(route[i:j+1]))
@@ -185,15 +267,21 @@ class AntColonyRCPSP:
             improved = False
             for i in range(1, len(task_seq)-1):
                 for j in range(i+1, len(task_seq)):
+                    # Wrong if else condition
+                    # if all(pred in best_seq[:i] for pred in task_seq[j].predecessors):
+                        # function 2opt_swap wrong also
                     new_seq = self._2opt_swap(best_seq, i, j)
                     if not self._is_valid_sequence(new_seq):
                         continue
+                    print(f"New sequence: {([task.name for task in new_seq])}")
+                    print(f"Old sequence: {([task2.name for task2 in best_seq])}")
                     new_makespan = self._schedule_makespan(new_seq)
                     if new_makespan < best_makespan:
                         best_seq = new_seq
                         best_makespan = new_makespan
                         improved = True
                         break
+                    # self._is_valid_sequence(task_seq)
                 if improved:
                     break
 
@@ -211,6 +299,7 @@ class AntColonyRCPSP:
                 # If no eligible tasks, try to find any task that can be scheduled
                 for task in unscheduled:
                     if all(pred in scheduled for pred in task.predecessors):
+                        print(f"Adding task {task.name} to eligible tasks")
                         eligible.append(task)
                         break
                 if not eligible:
@@ -228,8 +317,10 @@ class AntColonyRCPSP:
             current_task = next_task
 
         # Add any remaining unscheduled tasks at the end
+        # not the problem
         if unscheduled:
-            scheduled.extend(unscheduled)
+            # scheduled.extend(unscheduled)
+            raise ValueError("Unscheduled tasks remaining")
 
         # Calculate makespan with resource constraints
         makespan = self._schedule_makespan(scheduled)
@@ -260,10 +351,131 @@ class AntColonyRCPSP:
         self.pheromone = np.clip(self.pheromone, 0.1, 10.0)
 
         # Elitist forgetting with more randomness
-        if self.elitist_forget_generations and iteration > self.elitist_forget_generations:
+        if iteration > self.elitist_forget_generations:
             self.elite_solutions = []
             # Add more randomness to the reset
             self.pheromone = np.random.uniform(0.1, 2.0, (self.n_tasks, self.n_tasks))
+
+    # def plot_schedule(self, schedule: List[Task], makespan: int, resources: List[Resource]):
+    #     """
+    #     Plot a directed graph of the schedule showing task dependencies and resource usage.
+    #     """
+    #     # Create figure and axis
+    #     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10), height_ratios=[3, 1])
+    #     fig.suptitle(f'Schedule Visualization (Makespan: {makespan})', fontsize=16)
+
+    #     # Create directed graph
+    #     G = nx.DiGraph()
+        
+    #     # First, add all nodes with their attributes
+    #     for task in schedule:
+    #         if task.name == '1' or task.name == '32':  # Skip dummy start/end tasks
+    #             continue
+    #         # Calculate resource requirements
+    #         resource_reqs = [task.renewable_resources.get(resource, 0) for resource in resources]
+    #         # Add node with all attributes
+    #         G.add_node(task.name, 
+    #                   duration=task.duration,
+    #                   resource_reqs=resource_reqs)
+        
+    #     # Then add edges
+    #     for task in schedule:
+    #         if task.name == '1' or task.name == '32':  # Skip dummy start/end tasks
+    #             continue
+    #         for pred in task.predecessors:
+    #             if pred.name != '1':  # Skip dummy start
+    #                 G.add_edge(pred.name, task.name)
+
+    #     # Calculate node positions using hierarchical layout
+    #     pos = nx.spring_layout(G, k=1, iterations=50)
+        
+    #     # Draw the graph
+    #     node_colors = []
+    #     for node in G.nodes():
+    #         # Get resource requirements from node attributes
+    #         resource_reqs = G.nodes[node].get('resource_reqs', [0, 0, 0, 0])
+    #         if sum(resource_reqs) > 0:
+    #             # Find the resource with highest requirement
+    #             max_resource_idx = np.argmax(resource_reqs)
+    #             colors = ['lightblue', 'lightgreen', 'lightpink', 'lightyellow']
+    #             node_colors.append(colors[max_resource_idx])
+    #         else:
+    #             node_colors.append('gray')
+
+    #     # Draw nodes
+    #     nx.draw_networkx_nodes(G, pos, node_color=node_colors, 
+    #                          node_size=1200, alpha=0.7, ax=ax1)
+        
+    #     # Draw edges
+    #     nx.draw_networkx_edges(G, pos, edge_color='gray', 
+    #                          arrows=True, arrowsize=20, ax=ax1)
+        
+    #     # Add labels with duration and resource info
+    #     labels = {}
+    #     for node in G.nodes():
+    #         duration = G.nodes[node].get('duration', 0)
+    #         resource_reqs = G.nodes[node].get('resource_reqs', [0, 0, 0, 0])
+    #         # Format resource requirements
+    #         resource_str = ' '.join([f'R{i+1}:{req}' for i, req in enumerate(resource_reqs) if req > 0])
+    #         if not resource_str:
+    #             resource_str = 'No resources'
+    #         labels[node] = f'Task {node}\nDur: {duration}\n{resource_str}'
+        
+    #     nx.draw_networkx_labels(G, pos, labels, font_size=8, ax=ax1)
+        
+    #     # Plot resource usage
+    #     time_points = np.arange(0, makespan + 1)
+    #     resource_usage = {r.name: np.zeros(makespan + 1) for r in resources}
+        
+    #     # Calculate resource usage over time
+    #     for task in schedule:
+    #         if task.name == '1' or task.name == '32':  # Skip dummy start/end tasks
+    #             continue
+                
+    #         # Find start time based on predecessors
+    #         start_time = 0
+    #         for pred in task.predecessors:
+    #             if pred.name != '1':  # Skip dummy start
+    #                 pred_end = 0
+    #                 for t in schedule:
+    #                     if t.name == pred.name:
+    #                         pred_end = max(pred_end, start_time + t.duration)
+    #                 start_time = max(start_time, pred_end)
+            
+    #         # Update resource usage
+    #         for resource, amount in task.renewable_resources.items():
+    #             if amount > 0:
+    #                 resource_usage[resource.name][start_time:start_time + task.duration] += amount
+
+    #     # Plot resource usage
+    #     resource_colors = {
+    #         'R1': 'blue',
+    #         'R2': 'green',
+    #         'R3': 'red',
+    #         'R4': 'yellow'
+    #     }
+        
+    #     for i, (resource, usage) in enumerate(resource_usage.items()):
+    #         ax2.plot(time_points, usage, label=f'{resource}', 
+    #                 color=resource_colors[resource], linewidth=2)
+    #         ax2.axhline(y=resources[i].per_period_availability, 
+    #                    color=resource_colors[resource], linestyle='--', alpha=0.5)
+
+    #     # Customize plots
+    #     ax1.set_title('Task Dependencies Graph')
+    #     ax1.axis('off')  # Hide axes for the graph
+        
+    #     ax2.set_ylabel('Resource Usage')
+    #     ax2.set_xlabel('Time')
+    #     ax2.set_title('Resource Usage Over Time')
+    #     ax2.grid(True)
+    #     ax2.legend()
+        
+    #     # Set x-axis limits for resource usage
+    #     ax2.set_xlim(0, makespan)
+        
+        # plt.tight_layout()
+        # plt.show()
 
     def run(self):
         for iteration in range(self.n_iterations):
@@ -296,7 +508,7 @@ class AntColonyRCPSP:
                 print("Step | Task | Duration | Resource Requirements (R1, R2, R3, R4)")
                 print("-" * 80)
                 for step, task in enumerate(task_seq, 1):
-                    resource_reqs = [task.renewable_resources.get(resource, 0) for resource in self.resources]
+                    resource_reqs = [task.renewable_resources.get(resource, 0) for resource in resources]
                     print(f"{step:4} | {task.name:4} | {task.duration:8} | {resource_reqs}")
 
                 print("\nFinal Task Sequence:", " -> ".join([task.name for task in task_seq]))
@@ -314,7 +526,7 @@ class AntColonyRCPSP:
         print("Step | Task | Duration | Resource Requirements (R1, R2, R3, R4)")
         print("-" * 80)
         for step, task in enumerate(self.best_schedule, 1):
-            resource_reqs = [task.renewable_resources.get(resource, 0) for resource in self.resources]
+            resource_reqs = [task.renewable_resources.get(resource, 0) for resource in resources]
             print(f"{step:4} | {task.name:4} | {task.duration:8} | {resource_reqs}")
         
         print("\nFinal Task Sequence:", " -> ".join([task.name for task in self.best_schedule]))
@@ -340,8 +552,9 @@ class AntColonyRCPSP:
         if valid:
             print("Schedule is valid! All precedence constraints are satisfied.")
         return valid
-    
     # def plot_pheromone_matrix(self):
+        
+
     #     plt.figure(figsize=(10, 8))
     #     sns.heatmap(self.pheromone, 
     #                 cmap="YlGnBu", 
@@ -361,77 +574,12 @@ class AntColonyRCPSP:
     #     plt.tight_layout()
     #     plt.show()
 
-def create_jobs(sm_file_name):
-    sm_file = ReadSMFIles.SMFileParser.parse_sm_file(sm_file_name)
-
-    #Creating resources
-    r1 = int(sm_file[4].R1[0])
-    r2 = int(sm_file[4].R2[0])
-    r3 = int(sm_file[4].R3[0])
-    r4 = int(sm_file[4].R4[0])
-
-    R1 = Resource('R1', r1)
-    R2 = Resource('R2', r2)
-    R3 = Resource('R3', r3)
-    R4 = Resource('R4', r4)
-
-    resources = [R1, R2, R3, R4]
-
-    print([resource.name for resource in resources], [resource.per_period_availability for resource in resources])
-
-    #Creating jobs
-    jobs_enumerate = sm_file[3].jobnr
-    jobs_duration = sm_file[3].duration
-    jobs_resources = sm_file[3].resources
-    jobs_successors = sm_file[2].successors
-
-    jobs = [None for _ in jobs_enumerate]
-
-    for i in jobs_enumerate:
-        jobs[i - 1] = Task(str(i), jobs_duration[i - 1])
-
-    for i in range(len(resources)):
-        for j in range(len(jobs)):
-            jobs[j].add_renewable_resource(resources[i], jobs_resources[j][i])
-
-    for i in range(len(jobs)):
-        successors = jobs_successors[i]
-        for j in successors:
-            jobs[i].add_sucessor(jobs[j - 1])
-        
-    # jobs = jobs[1:-1]
-
-    # Ensure all tasks with no predecessors have the dummy start as a predecessor
-    # (dummy start is jobs[0])
-    dummy_start = jobs[0]
-    for job in jobs[1:]:
-        if len(job.predecessors) == 0:
-            job.add_predecessor(dummy_start)
-
-    # Print task information
-    print("\nTask Information:")
-    print("Task ID | Duration | Resource Requirements (R1, R2, R3, R4) | Successors")
-    print("-" * 80)
-    for job in jobs:
-        resource_reqs = [job.renewable_resources.get(resource, 0) for resource in resources]
-        successors = [s.name for s in job.sucessors]
-        print(f"{job.name:7} | {job.duration:8} | {resource_reqs} | {successors}")
-
-    print("\nResource Availabilities:")
-    for resource in resources:
-        print(f"{resource.name}: {resource.per_period_availability}")
-
-    return jobs, resources
-
-def run_aco_with_seed(sm_file_name, seed: int) -> int:
+def run_aco_with_seed(seed: int) -> int:
     random.seed(seed)
     np.random.seed(seed)
 
-    jobs, resources = create_jobs(sm_file_name)
-
     aco = AntColonyRCPSP(
         jobs,
-        resources,
         n_ants=10,
         n_iterations=10,
         alpha=1.0,
@@ -442,16 +590,9 @@ def run_aco_with_seed(sm_file_name, seed: int) -> int:
         elitist_forget_generations=15
     )
 
-    return aco.run()
+    best_schedule, best_makespan = aco.run()
+    return best_makespan
 
-
-print = lambda *args, **kwargs: None
-
-if __name__ == "__main__":
-    best_schedule, best_makespan = run_aco_with_seed("j60.sm/j6025_1.sm", 1)
-    # print(best_schedule)
-    # print(best_makespan)
-    
 
 # Create and run the ACO algorithm with specified parameters
 # aco = AntColonyRCPSP(jobs, n_ants = 60,  ## More ants explore more paths per iteration but increase computation.
@@ -482,26 +623,27 @@ if __name__ == "__main__":
 # aco.plot_pheromone_matrix()
 
 # === Variability Diagnostic: Run ACO multiple times ===
-# seeding = 3
-# makespans = []
+if __name__ == "__main__":
+    num_runs = 10
+    makespans = []
 
-# for i in range(seeding):
-#     print(f"\n=== Trial {i + 1} of {seeding} ===")
-#     ms = run_aco_with_seed(i)
-#     makespans.append(ms)
+    for i in range(num_runs):
+        print(f"\n=== Trial {i + 1} of {num_runs} ===")
+        ms = run_aco_with_seed(i)
+        makespans.append(ms)
 
-# # === Statistics ===
-# mean_ms = np.mean(makespans)
-# std_ms = np.std(makespans)
-# best = np.min(makespans)
-# worst = np.max(makespans)
+    # === Statistics ===
+    mean_ms = np.mean(makespans)
+    std_ms = np.std(makespans)
+    best = np.min(makespans)
+    worst = np.max(makespans)
 
-# print("\n Makespan Statistics:")
-# print(f"Best   : {best}")
-# print(f"Worst  : {worst}")
-# print(f"Mean   : {mean_ms:.2f}")
-# print(f"Std Dev: {std_ms:.2f}")
-# print("Number of Runs:", seeding)
+    print("\n Makespan Statistics:")
+    print(f"Best   : {best}")
+    print(f"Worst  : {worst}")
+    print(f"Mean   : {mean_ms:.2f}")
+    print(f"Std Dev: {std_ms:.2f}")
+    print("Number of Runs:", num_runs)
 
 # plt.figure(figsize=(10, 5))
 # plt.hist(makespans, bins=10, edgecolor='black', color='skyblue')
