@@ -134,11 +134,13 @@ class SMFileParser:
 
         return resource_df, project_info, precedence_df, requests_df, availability_df
 
+if __name__ == "__main__":
+    
     # Path to the .sm file
     file_path = 'j30.sm/j301_1.sm'
 
     # Parse the file
-    resource_df, project_info, precedence_df, requests_df, availability_df = parse_sm_file(file_path)
+    resource_df, project_info, precedence_df, requests_df, availability_df = SMFileParser.parse_sm_file(file_path)
 
     # Display the data
     print("Resources:")

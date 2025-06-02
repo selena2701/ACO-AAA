@@ -1,18 +1,20 @@
 import itertools
 import numpy as np
 import random
-from code_for_ACO_RCPSP_PP_V4 import AntColonyRCPSP, jobs
+from ACO_RCPSP import AntColonyRCPSP, create_jobs
 import pandas as pd
 
-def run_single_config(alpha, beta, rho, c, gamma, elitist_forget_generations, seed_trials=5):
+def run_single_config(jobs, resources, alpha, beta, rho, c, gamma, elitist_forget_generations,n_ants, n_iterations, seed_trials):
     best_makespans = []
     for seed in range(seed_trials):
         random.seed(seed)
         np.random.seed(seed)
+
         aco = AntColonyRCPSP(
             jobs,
-            n_ants=60,
-            n_iterations=15,
+            resources,
+            n_ants=n_ants, 
+            n_iterations=n_iterations,
             alpha=alpha,
             beta=beta,
             rho=rho,
@@ -20,10 +22,13 @@ def run_single_config(alpha, beta, rho, c, gamma, elitist_forget_generations, se
             gamma=gamma,
             elitist_forget_generations=elitist_forget_generations
         )
+
         _, best_ms = aco.run()
         best_makespans.append(best_ms)
 
     return {
+        'n_ants': n_ants,
+        'n_iterations': n_iterations,
         'alpha': alpha,
         'beta': beta,
         'rho': rho,
@@ -36,40 +41,40 @@ def run_single_config(alpha, beta, rho, c, gamma, elitist_forget_generations, se
         'max_makespan': np.max(best_makespans)
     }
 
-def main():
+
+if __name__ == "__main__":
+
+    sm_file_name = "j60.sm/j6025_1.sm"
+    jobs, resources = create_jobs(sm_file_name)
+
     # Define parameter grid
-    alpha_range = np.round(np.arange(0.5, 2.1, 0.5), 2)
-    beta_range = np.round(np.arange(1.0, 2.1, 0.5), 2)
-    rho_range = np.round(np.arange(0.05, 0.21, 0.05), 2)
-    c_range = np.round(np.arange(0.2, 1.01, 0.2), 2)
-    gamma_range = np.round(np.arange(0.5, 1.01, 0.1), 2)
-    elitist_range = list(range(5, 21, 5))
+    n_ants_range = [30, 60, 90] # Number of ants
+    n_iterations_range = [5, 10, 15] # Number of iterations
+    elitist_range = [5, 10, 15] # Number of elitist generations
 
-    # alpha_range = [1]
-    # beta_range = [2]
-    # rho_range = [0.1]
-    # c_range = [0.5]
-    # gamma_range = [1]
-    # elitist_range = [10]
+    # Fixed parameters
+    alpha_range = [1]
+    beta_range = [3]
+    rho_range = [0.1]
+    c_range = [0.5]
+    gamma_range = [1]
+    seed_trials = 1
 
-
-    param_grid = list(itertools.product(alpha_range, beta_range, rho_range, c_range, gamma_range, elitist_range))
-
+    #Creating combinations
+    param_grid = list(itertools.product(alpha_range, beta_range, rho_range, c_range, gamma_range, elitist_range, n_ants_range, n_iterations_range))
     print(f"Total configurations: {len(param_grid)}")
 
+    #Running combinations
     results = []
 
-    for idx, (alpha, beta, rho, c, gamma, elitist) in enumerate(param_grid):
-        print(f"\n[{idx + 1}/{len(param_grid)}] Testing: alpha={alpha}, beta={beta}, rho={rho}, c={c}, gamma={gamma}, elitist={elitist}")
-        result = run_single_config(alpha, beta, rho, c, gamma, elitist)
+    for idx, (alpha, beta, rho, c, gamma, elitist, ant, iteration) in enumerate(param_grid):
+        print(f"\n[{idx + 1}/{len(param_grid)}] Testing: alpha={alpha}, beta={beta}, rho={rho}, c={c}, gamma={gamma}, elitist={elitist}, ant={ant}, iteration={iteration}")
+        result = run_single_config(jobs, resources, alpha, beta, rho, c, gamma, elitist, ant, iteration, seed_trials)
         results.append(result)
 
     # Save results to CSV
     df = pd.DataFrame(results)
     df.sort_values(by=['mean_makespan', 'std_makespan'], inplace=True)
-    df.to_csv("aco_parameter_search_results.csv", index=False)
+    df.to_csv("experiment/aco_parameter_search_results.csv", index=False)
     print("\nTop 10 Configurations:")
     print(df.head(10))
-
-if __name__ == "__main__":
-    main()
