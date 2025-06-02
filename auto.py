@@ -7,8 +7,8 @@ import pandas as pd
 def run_single_config(jobs, resources, alpha, beta, rho, c, gamma, elitist_forget_generations,n_ants, n_iterations, seed_trials):
     best_makespans = []
     for seed in range(seed_trials):
-        random.seed(seed)
-        np.random.seed(seed)
+        # random.seed(seed)
+        # np.random.seed(seed)
 
         aco = AntColonyRCPSP(
             jobs,
@@ -25,6 +25,8 @@ def run_single_config(jobs, resources, alpha, beta, rho, c, gamma, elitist_forge
 
         _, best_ms = aco.run()
         best_makespans.append(best_ms)
+
+    print(np.min(best_makespans))
 
     return {
         'n_ants': n_ants,
@@ -48,9 +50,9 @@ if __name__ == "__main__":
     jobs, resources = create_jobs(sm_file_name)
 
     # Define parameter grid
-    n_ants_range = [30, 60, 90] # Number of ants
-    n_iterations_range = [5, 10, 15] # Number of iterations
-    elitist_range = [5, 10, 15] # Number of elitist generations
+    n_ants_range = range(30, 90, 10) #[30, 60, 90] # Number of ants
+    n_iterations_range = [None] #[5, 10, 15] #  Number of iterations
+    elitist_range = [None] # [5, 10, 15] # Number of elitist generations
 
     # Fixed parameters
     alpha_range = [1]
@@ -58,7 +60,7 @@ if __name__ == "__main__":
     rho_range = [0.1]
     c_range = [0.5]
     gamma_range = [1]
-    seed_trials = 1
+    seed_trials = 3
 
     #Creating combinations
     param_grid = list(itertools.product(alpha_range, beta_range, rho_range, c_range, gamma_range, elitist_range, n_ants_range, n_iterations_range))
@@ -69,7 +71,7 @@ if __name__ == "__main__":
 
     for idx, (alpha, beta, rho, c, gamma, elitist, ant, iteration) in enumerate(param_grid):
         print(f"\n[{idx + 1}/{len(param_grid)}] Testing: alpha={alpha}, beta={beta}, rho={rho}, c={c}, gamma={gamma}, elitist={elitist}, ant={ant}, iteration={iteration}")
-        result = run_single_config(jobs, resources, alpha, beta, rho, c, gamma, elitist, ant, iteration, seed_trials)
+        result = run_single_config(jobs, resources, alpha, beta, rho, c, gamma, elitist, ant, ant, seed_trials)
         results.append(result)
 
     # Save results to CSV
